@@ -68,7 +68,7 @@ def setGATT(ptr, h):
         f'at+rsibt_addattribute={ptr},C,{BUFF_SIZE},{getAttrStr(rxUUID)},{PROP_WRITE}\r\n'
     )
     cmdlist.append(
-        f'at+rsibt_addattribute={ptr},D,2,2803,2,14,{PROP_NOTIFY},0,0E,00,{getRevAttrStr(txUUID)}\r\n'
+        f'at+rsibt_addattribute={ptr},D,2,2803,{PROP_READ},14,{PROP_NOTIFY},0,0E,00,{getRevAttrStr(txUUID)}\r\n'
     )
     cmdlist.append(
         f'at+rsibt_addattribute={ptr},E,{BUFF_SIZE},{getAttrStr(txUUID)},{PROP_NOTIFY}\r\n'
