@@ -1,50 +1,18 @@
 #!/usr/local/bin/python3
 import serial
 from time import sleep
-import sys
+import sys, threading
 from constants import *
 from utils import *
-
-ser = serial.Serial(PORT, BAUD)
 
 cmdlist = []
 didSetGATT = False
 didConnect = False
+readyToSetHandler = False
+cond = threading.Condition()
+ptr = ""
 
-
-# conver input data
-def convData(data):
-    s = ','.join(hex(ord(x))[2:] for x in data)
-    return str(f'{len(data)},{s}')
-
-
-# Function code area
-def getOpMode(wifi_oper_mode, coex_mode):
-    return (wifi_oper_mode | (coex_mode << 16))
-
-
-def getBLEFeatureMap(attrs, gatts, slaves, tx_index):
-    return (attrs | gatts << 8 | slaves << 12 | tx_index << 16)
-    # Range for the BLE Tx Power Index is 1 to 75 (0, 32 index is invalid)
-    # 1 - 31 BLE -0DBM Mode
-    # 33 - 63 BLE- 10DBM Mode
-    # 64- 75 BLE - HP Mode.
-
-
-def getAttrStr(uuid):
-    e = uuid.split('-')
-    m0 = ',-'.join(e[:-1])
-    m = list(groupByI(''.join(e[-1:]), 2))[::-1]
-    m1 = ','.join(m[-2:] + m[:4])
-    return str(f'{m0},{m1}')
-
-
-def getRevAttrStr(uuid):
-    e = list(groupByI(''.join(uuid.split('-')), 2))
-    m0 = ','.join(e[:4][::-1])
-    m2 = ','.join(e[-4:][::-1])
-    m1 = ','.join(list(flatten(list(groupByI(e[4:-4][::-1], 2))[::-1])))
-    return str(f'{m0},{m1},{m2}')
+ser = serial.Serial(PORT, BAUD)
 
 
 def send(cmd):
@@ -52,14 +20,33 @@ def send(cmd):
     sleep(.2)
 
 
-def wakeRYWB():
+def initRYWB():
+    global cond
     send("\x1c")
     send("\x55")
     send("\x31")
 
+    cond.acquire()
+    cond.wait()
 
-def setGATT(ptr, h):
+    cmdlist.append(
+        f'at+rsi_opermode={getOpMode(WIFI_CLI, COEX_BLE)},{feature_bit_map},{tcp_ip_feature_bit_map},{custom_feature_bit_map},{ext_custom_feature_bit_map},{bt_feature_bit_map},{ext_tcp_ip_feature_bit_map},{getBLEFeatureMap(25, 8, 0, 30)}\r\n'
+    )
+    cmdlist.append(f'at+rsibt_setlocalname={len(deviceName)},{deviceName}\r\n')
+    cmdlist.append(f'at+rsibt_getlocalbdaddr?\r\n')
+    cmdlist.append(
+        f'at+rsibt_addservice=10,{getAttrStr(ServiceUUID)},6,30\r\n')
+
+    for cmd in cmdlist:
+        print(cmd)
+        send(cmd)
+
     idx = len(cmdlist)
+
+    print("#### waiting for GATT ptr")
+    cond.acquire()
+    cond.wait()
+    print(f"#### Set GATT with and handler pointer is {ptr} ")
     # read is force in 2803
     cmdlist.append(
         f'at+rsibt_addattribute={ptr},B,2,2803,{PROP_READ},14,{PROP_WRITE},0,0C,00,{getRevAttrStr(rxUUID)}\r\n'
@@ -84,46 +71,37 @@ def setGATT(ptr, h):
     )
     cmdlist.append(f'at+rsibt_advertise={EN_ADV},128,0,0,0,2048,2048,0,7\r\n')
 
-    global didSetGATT
-    didSetGATT = True
-
     for cmd in cmdlist[idx:]:
         print(f'> {cmd}')
         send(cmd)
 
-    with open(FileName, 'w') as f:
-        for cmd in cmdlist:
-            f.write("%s\n" % cmd)
 
-
-def initRYWB():
-    wakeRYWB()
-    sleep(1)
-    cmdlist.append(
-        f'at+rsi_opermode={getOpMode(WIFI_CLI, COEX_BLE)},{feature_bit_map},{tcp_ip_feature_bit_map},{custom_feature_bit_map},{ext_custom_feature_bit_map},{bt_feature_bit_map},{ext_tcp_ip_feature_bit_map},{getBLEFeatureMap(25, 8, 0, 30)}\r\n'
-    )
-    cmdlist.append(f'at+rsibt_setlocalname={len(deviceName)},{deviceName}\r\n')
-    cmdlist.append(f'at+rsibt_getlocalbdaddr?\r\n')
-    cmdlist.append(
-        f'at+rsibt_addservice=10,{getAttrStr(ServiceUUID)},6,30\r\n')
-
-    for cmd in cmdlist:
-        print(cmd)
-        send(cmd)
-
-    with open(FileName, 'w') as f:
-        for cmd in cmdlist:
-            f.write("%s\n" % cmd)
+def checkForHandler(data):
+    a = data.split(' ')
+    if len(a) > 1:
+        b = a[1].split(',')
+        if len(b) > 1 and 'A' in b[1]:
+            global ptr
+            ptr = b[0]
+            sleep(0.5)
+            print(f"###### OK and ptr is {ptr} {b[1]}")
+            global cond
+            cond.acquire()
+            cond.notify()
+            cond.release()
 
 
 def check(data):
+    print('<', data)
     global didConnect
-    if "OK" in data:
-        a = data.split(' ')
-        if len(a) > 1:
-            b = a[1].split(',')
-            if len(b) > 1 and not didSetGATT:
-                setGATT(b[0], b[1])
+    if 'Loading Done' in data:
+        global cond
+        cond.acquire()
+        cond.notify()
+        cond.release()
+
+    if 'OK' in data:
+        checkForHandler(data)
     if 'AT+RSIBT_LE_DISCONNECTED' in data:
         # resend broadcast commands
         didConnect = False
@@ -137,15 +115,29 @@ def check(data):
         )
 
 
+def taskSerial():
+    print("task thread start")
+    while True:
+        while ser.in_waiting:
+            data = ser.readline().decode()
+            check(data)
+
+
 def main():
-    initRYWB()
     try:
-        while True:
-            while ser.in_waiting:
-                data = ser.readline().decode()
-                print('<', data)
-                check(data)
-    except KeyboardInterrupt:
+        t = threading.Thread(target=taskSerial)
+        t2 = threading.Thread(target=initRYWB)
+        t.start()
+        t2.start()
+        print("main thread start")
+        t.join()
+        t2.join()
+        ser.close()
+        with open(FileName, 'w') as f:
+            for cmd in cmdlist:
+                f.write("%s\n" % cmd)
+        print('\nBye bye!')
+    except (KeyboardInterrupt, SystemExit):
         ser.close()
         print('\nBye bye!')
 

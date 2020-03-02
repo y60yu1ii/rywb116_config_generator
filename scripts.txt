@@ -1,6 +1,6 @@
 at+rsi_opermode=786432,0,1,2147483648,2150121472,3221225472,0,1968153
 
-at+rsibt_setlocalname=8,Cerberus
+at+rsibt_setlocalname=11,Device Name
 
 at+rsibt_getlocalbdaddr?
 
@@ -16,7 +16,7 @@ at+rsibt_addattribute=26D1C,E,128,6E400003,-B5A3,-F393,-E0A9,0E,E5,9E,CA,DC,24,1
 
 at+rsibt_addattribute=26D1C,F,2,2902,0A,2,0,0
 
-at+rsibt_setadvertisedata=14,2,1,6,3,2,01,00,9,9,43,65,72,62,65,72,75,73
+at+rsibt_setadvertisedata=17,2,1,6,3,2,01,00,12,9,44,65,76,69,63,65,20,4e,61,6d,65
 
 at+rsibt_advertise=1,128,0,0,0,2048,2048,0,7
 
