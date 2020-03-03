@@ -3,14 +3,30 @@ import serial
 from serial import SerialException
 from time import sleep
 import sys, threading
+import re
 from constants import *
 from utils import *
+
+
+def waitNext(cond):
+    cond.acquire()
+    cond.wait()
 
 
 def send(cmd):
     if ser.is_open:
         ser.write(cmd.encode())
         sleep(.2)
+
+
+def whenConnected():
+    global didSubscribed, threadExit
+    while not threadExit:
+        while didSubscribed:
+            send(
+                f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
+            )
+            sleep(1)
 
 
 def initRYWB():
@@ -21,9 +37,7 @@ def initRYWB():
     send("\x55")
     send("\x31")
 
-    cond.acquire()
-    cond.wait()
-
+    waitNext(cond)
     if threadExit:
         return
 
@@ -42,10 +56,11 @@ def initRYWB():
     idx = len(cmdlist)
 
     print("#### waiting for GATT ptr")
-    cond.acquire()
-    cond.wait()
+
+    waitNext(cond)
     if threadExit:
         return
+
     print(f"#### Set GATT with and handler pointer is {ptr} ")
     # read is force in 2803
     cmdlist.append(
@@ -75,15 +90,11 @@ def initRYWB():
         print(f'> {cmd}')
         send(cmd)
 
-    print("end of initRYB")
     with open(FileName, 'w') as f:
         for cmd in cmdlist:
             f.write("%s\n" % cmd)
-    cond.acquire()
-    cond.wait()
-    if threadExit:
-        print('\nEnd initRYB')
-        return
+
+    print("end of initRYB")
 
 
 def checkForHandler(data):
@@ -103,7 +114,7 @@ def checkForHandler(data):
 
 def check(data):
     print('<', data)
-    global didConnect
+    global didConnect, didSubscribed
     if 'Loading Done' in data:
         global cond
         cond.acquire()
@@ -119,10 +130,19 @@ def check(data):
             send(cmd)
     elif 'AT+RSIBT_LE_DEVICE_CONNECTED' in data:
         didConnect = True
+        mac = re.search(REG_MAC_ADDR, data)
+        if mac is not None:
+            global MAC_ADDR
+            MAC_ADDR = mac.group()
+            print(f"GET MACADDR is {MAC_ADDR}")
+
+    elif 'F,2,0,0' in data:
+        didSubscribed = False
     elif 'F,2,1,0' in data:
-        send(
-            f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
-        )
+        didSubscribed = True
+        # send(
+        #     f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
+        # )
 
 
 def taskSerial():
@@ -136,24 +156,23 @@ def taskSerial():
 
 def main():
     try:
-        t = threading.Thread(target=taskSerial)
-        t2 = threading.Thread(target=initRYWB)
-        t.start()
-        t2.start()
+        h_serial = threading.Thread(target=taskSerial)
+        h_initRYB = threading.Thread(target=initRYWB)
+        h_connect = threading.Thread(target=whenConnected)
+
+        h_serial.start()
+        h_initRYB.start()
+        h_connect.start()
         print("Threads start")
-        t.join()
-        t2.join()
+        h_initRYB.join()
+        h_serial.join()
+        h_connect.join()
         ser.close()
     except (KeyboardInterrupt, SystemExit):
         global threadExit
         threadExit = True
-        global cond
-        cond.acquire()
-        cond.notify()
-        cond.release()
-
-        t.join()
-        t2.join()
+        h_initRYB.join()
+        h_serial.join()
         ser.close()
         print('\nBye bye!')
 
@@ -162,9 +181,11 @@ if __name__ == '__main__':
     cmdlist = []
     threadExit = False
     didConnect = False
+    didSubscribed = False
     readyToSetHandler = False
     cond = threading.Condition()
     ptr = None
+    MAC_ADDR = ""
 
     try:
         ser = serial.Serial(PORT, BAUD)
