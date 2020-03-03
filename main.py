@@ -1,33 +1,31 @@
 #!/usr/local/bin/python3
 import serial
+from serial import SerialException
 from time import sleep
 import sys, threading
 from constants import *
 from utils import *
 
-cmdlist = []
-didSetGATT = False
-didConnect = False
-readyToSetHandler = False
-cond = threading.Condition()
-ptr = ""
-
-ser = serial.Serial(PORT, BAUD)
-
 
 def send(cmd):
-    ser.write(cmd.encode())
-    sleep(.2)
+    if ser.is_open:
+        ser.write(cmd.encode())
+        sleep(.2)
 
 
 def initRYWB():
     global cond
+    global threadExit
+
     send("\x1c")
     send("\x55")
     send("\x31")
 
     cond.acquire()
     cond.wait()
+
+    if threadExit:
+        return
 
     cmdlist.append(
         f'at+rsi_opermode={getOpMode(WIFI_CLI, COEX_BLE)},{feature_bit_map},{tcp_ip_feature_bit_map},{custom_feature_bit_map},{ext_custom_feature_bit_map},{bt_feature_bit_map},{ext_tcp_ip_feature_bit_map},{getBLEFeatureMap(25, 8, 0, 30)}\r\n'
@@ -38,7 +36,7 @@ def initRYWB():
         f'at+rsibt_addservice=10,{getAttrStr(ServiceUUID)},6,30\r\n')
 
     for cmd in cmdlist:
-        print(cmd)
+        print(f'> {cmd}')
         send(cmd)
 
     idx = len(cmdlist)
@@ -46,6 +44,8 @@ def initRYWB():
     print("#### waiting for GATT ptr")
     cond.acquire()
     cond.wait()
+    if threadExit:
+        return
     print(f"#### Set GATT with and handler pointer is {ptr} ")
     # read is force in 2803
     cmdlist.append(
@@ -75,6 +75,16 @@ def initRYWB():
         print(f'> {cmd}')
         send(cmd)
 
+    print("end of initRYB")
+    with open(FileName, 'w') as f:
+        for cmd in cmdlist:
+            f.write("%s\n" % cmd)
+    cond.acquire()
+    cond.wait()
+    if threadExit:
+        print('\nEnd initRYB')
+        return
+
 
 def checkForHandler(data):
     a = data.split(' ')
@@ -100,27 +110,28 @@ def check(data):
         cond.notify()
         cond.release()
 
-    if 'OK' in data:
+    elif 'OK' in data:
         checkForHandler(data)
-    if 'AT+RSIBT_LE_DISCONNECTED' in data:
+    elif 'AT+RSIBT_LE_DISCONNECTED' in data:
         # resend broadcast commands
         didConnect = False
         for cmd in cmdlist[-1:]:
             send(cmd)
-    if 'AT+RSIBT_LE_DEVICE_CONNECTED' in data:
+    elif 'AT+RSIBT_LE_DEVICE_CONNECTED' in data:
         didConnect = True
-    if 'F,2,1,0' in data:
+    elif 'F,2,1,0' in data:
         send(
             f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
         )
 
 
 def taskSerial():
-    print("task thread start")
-    while True:
+    print("#### Listening to Serial...")
+    while not threadExit:
         while ser.in_waiting:
             data = ser.readline().decode()
             check(data)
+    print('\nEnd task serial')
 
 
 def main():
@@ -129,18 +140,34 @@ def main():
         t2 = threading.Thread(target=initRYWB)
         t.start()
         t2.start()
-        print("main thread start")
+        print("Threads start")
         t.join()
         t2.join()
         ser.close()
-        with open(FileName, 'w') as f:
-            for cmd in cmdlist:
-                f.write("%s\n" % cmd)
-        print('\nBye bye!')
     except (KeyboardInterrupt, SystemExit):
+        global threadExit
+        threadExit = True
+        global cond
+        cond.acquire()
+        cond.notify()
+        cond.release()
+
+        t.join()
+        t2.join()
         ser.close()
         print('\nBye bye!')
 
 
 if __name__ == '__main__':
-    main()
+    cmdlist = []
+    threadExit = False
+    didConnect = False
+    readyToSetHandler = False
+    cond = threading.Condition()
+    ptr = None
+
+    try:
+        ser = serial.Serial(PORT, BAUD)
+        main()
+    except SerialException:
+        print('serial not connected!')
