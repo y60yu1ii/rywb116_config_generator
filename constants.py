@@ -5,6 +5,9 @@ deviceName = "Device_Name"
 ServiceUUID = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E'
 rxUUID = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'
 txUUID = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'
+OTAServiceUUID = '6E4000FE-B5A3-F393-E0A9-E50E24DCCA9E'
+rxOTA = '6E400004-B5A3-F393-E0A9-E50E24DCCA9E'
+txOTA = '6E400005-B5A3-F393-E0A9-E50E24DCCA9E'
 FileName = "scripts.txt"
 BUFF_SIZE = 128
 
@@ -38,7 +41,8 @@ COEX_WIFI_BLE_ZIGBEE = 15
 feature_bit_map = 0
 tcp_ip_feature_bit_map = 1
 custom_feature_bit_map = 2147483648
-ext_custom_feature_bit_map = 2150121472
+# ext_custom_feature_bit_map = 2150121472
+ext_custom_feature_bit_map = 2149580800  #added SMP support
 bt_feature_bit_map = 3221225472
 ext_tcp_ip_feature_bit_map = 0
 

@@ -19,16 +19,6 @@ def send(cmd):
         sleep(.2)
 
 
-def whenConnected():
-    global didSubscribed, threadExit
-    while not threadExit:
-        while didSubscribed:
-            send(
-                f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
-            )
-            sleep(1)
-
-
 def initRYWB():
     global cond
     global threadExit
@@ -41,8 +31,11 @@ def initRYWB():
     if threadExit:
         return
 
+    # cmdlist.append(
+    #     f'at+rsi_opermode={getOpMode(WIFI_CLI, COEX_BLE)},{feature_bit_map},{tcp_ip_feature_bit_map},{custom_feature_bit_map},{ext_custom_feature_bit_map},{bt_feature_bit_map},{ext_tcp_ip_feature_bit_map},{getBLEFeatureMap(25, 8, 0, 30)}\r\n'
+    # )
     cmdlist.append(
-        f'at+rsi_opermode={getOpMode(WIFI_CLI, COEX_BLE)},{feature_bit_map},{tcp_ip_feature_bit_map},{custom_feature_bit_map},{ext_custom_feature_bit_map},{bt_feature_bit_map},{ext_tcp_ip_feature_bit_map},{getBLEFeatureMap(25, 8, 0, 30)}\r\n'
+        "at+rsi_opermode=851968,0,1,2147483648,2149580800,3221225472,0,1075773440\r\n"
     )
     cmdlist.append(f'at+rsibt_setlocalname={len(deviceName)},{deviceName}\r\n')
     cmdlist.append(f'at+rsibt_getlocalbdaddr?\r\n')
@@ -78,13 +71,30 @@ def initRYWB():
 
     cmdlist.append(f'at+rsibt_addattribute={ptr},F,2,2902,0A,2,0,0\r\n')
 
+    cmdlist.append(
+        f'at+rsibt_addattribute={ptr},10,2,2803,{PROP_READ},14,{PROP_WRITE},0,11,00,{getRevAttrStr(rxOTA)}\r\n'
+    )
+    cmdlist.append(
+        f'at+rsibt_addattribute={ptr},11,{BUFF_SIZE},{getAttrStr(rxOTA)},{PROP_WRITE}\r\n'
+    )
+
+    cmdlist.append(
+        f'at+rsibt_addattribute={ptr},12,2,2803,{PROP_READ},14,{PROP_NOTIFY},0,13,00,{getRevAttrStr(txOTA)}\r\n'
+    )
+    cmdlist.append(
+        f'at+rsibt_addattribute={ptr},13,{BUFF_SIZE},{getAttrStr(txOTA)},{PROP_NOTIFY}\r\n'
+    )
+
+    cmdlist.append(f'at+rsibt_addattribute={ptr},14,2,2902,0A,2,0,0\r\n')
+
     nameStr = ','.join(hex(ord(x))[2:] for x in deviceName)
     uuidStr = ','.join(list(groupByI(ServiceUUID[4:8], 2))[::-1])
     #put 2, 1, 6 for flags, BLEDR etc.
     cmdlist.append(
         f'at+rsibt_setadvertisedata={len(deviceName) + 1 + 0 + 3 + 2},2,1,6,3,{flag_uuid16_imcplt},{uuidStr},{len(deviceName) + 1},{flag_local_name},{nameStr}\r\n'
     )
-    cmdlist.append(f'at+rsibt_advertise={EN_ADV},128,0,0,0,2048,2048,0,7\r\n')
+    # 2048 for 1/10s
+    cmdlist.append(f'at+rsibt_advertise={EN_ADV},128,0,0,0,50,60,0,7\r\n')
 
     for cmd in cmdlist[idx:]:
         print(f'> {cmd}')
@@ -128,21 +138,21 @@ def check(data):
         didConnect = False
         for cmd in cmdlist[-1:]:
             send(cmd)
-    elif 'AT+RSIBT_LE_DEVICE_CONNECTED' in data:
+    elif 'AT+RSIBT_LE_DEVICE_CONNECTED' in data or 'AT+RSIBT_LE_DEVICE_ENHANCE_CONNECTED' in data:
         didConnect = True
         mac = re.search(REG_MAC_ADDR, data)
         if mac is not None:
             global MAC_ADDR
             MAC_ADDR = mac.group()
             print(f"GET MACADDR is {MAC_ADDR}")
+            print('send smpreq challenge!!!!')
+            sleep(.5)
+            send(f'at+rsibt_smpresp=={MAC_ADDR},1\r\n')
 
     elif 'F,2,0,0' in data:
         didSubscribed = False
     elif 'F,2,1,0' in data:
         didSubscribed = True
-        # send(
-        #     f'at+rsibt_setlocalattvalue=E,{convData(str("1234567891011121314151617181920"))}\r\n'
-        # )
 
 
 def taskSerial():
@@ -158,15 +168,12 @@ def main():
     try:
         h_serial = threading.Thread(target=taskSerial)
         h_initRYB = threading.Thread(target=initRYWB)
-        h_connect = threading.Thread(target=whenConnected)
 
         h_serial.start()
         h_initRYB.start()
-        h_connect.start()
         print("Threads start")
         h_initRYB.join()
         h_serial.join()
-        h_connect.join()
         ser.close()
     except (KeyboardInterrupt, SystemExit):
         global threadExit
