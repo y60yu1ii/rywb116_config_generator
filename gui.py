@@ -6,21 +6,110 @@ import sys, threading
 import re
 from constants import *
 from utils import *
+import wx
+from pubsub import pub
+
+TITLE = "RYWB116 Setting"
+PORT_LIST=["port"]
+_PORT = "port"
+dh = 500
+dw = 500
+
+class MyFrame(wx.Frame):
+    def __init__(self,parent=None):
+        super(MyFrame, self).__init__(parent,-1,TITLE,size=(dw, dh))
+        panel = wx.Panel(self,-1)
+        self.pChoice = wx.Choice(panel, -1, pos=(10, 10), size=(250, -1),choices=PORT_LIST)
+        self.pChoice.Bind(wx.EVT_CHOICE, self.onChoice)
+
+        self.button = wx.Button(panel,-1,"GO",pos=(dw - 90,10))
+        self.Bind(wx.EVT_BUTTON,self.OnClick,self.button)
+        self.button.SetDefault()
+
+        self.textpanel = wx.TextCtrl(panel,-1,"## LOG ##", size=(dw - 20,400), pos=(10, 40), style=wx.TE_MULTILINE|wx.TE_READONLY)
+
+
+        pub.subscribe(self.recive, 'object.added')
+        pub.subscribe(self.reciveThread, 'thread.input')
+
+        f = threading.Thread(target=findPort)
+        f.daemon = True
+        f.start()
+        print("Find port...")
+    
+    def onChoice(self, evt):
+        global _PORT
+        _PORT = evt.GetString()
+        print("choice is port as", _PORT)
+
+    def OnClick(self,event):
+        if _PORT == "port" :
+            return
+        else:
+            callUI("go", "0")
+
+
+    def recive(self,data, extra1, extra2=None):
+        print(data)
+        print(extra1)
+        if extra2:
+            print(extra2)
+        # self.inputText.Value += str(data)
+        self.textpanel.Value += str(data)
+
+    def reciveThread(self, tag, data):
+        wx.CallAfter(self.updateUI, tag, data)
+
+    def updateUI(self, tag, data):
+        if tag == 'log':
+            self.textpanel.Value += ("\n" + str(data))
+        elif tag == 'port':
+            self.pChoice.Clear()
+            self.pChoice.AppendItems(PORT_LIST)
+        elif tag == 'go':
+            print("go with port ", PORT)
+            self.button.Disable()
+            s = threading.Thread(target=taskSerial)
+            i = threading.Thread(target=initRYWB)
+
+            s.start()
+            i.start()
+
+def findPort():
+    global PORT_LIST
+    PORT_LIST = serial_ports()
+    callUI("port", "0")
+
+def taskSerial():
+    try:
+        ser = serial.Serial(_PORT, BAUD)
+        callUI("log","Serial Ready!!" + str(ser.is_open))
+    except SerialException:
+        callUI("log", "Serial is not connect!!")
+
+    while not threadExit:
+        while ser.in_waiting:
+            data = ser.readline().decode()
+            print(">", data)
+            check(data)
+
+def send(cmd):
+    ser = serial.Serial(_PORT, BAUD)
+    if ser.is_open:
+        ser.write(cmd.encode())
+        sleep(.2)
+
+def callUI(tag, data):
+    pub.sendMessage('thread.input', tag=tag, data=data)
 
 def waitNext(cond):
     cond.acquire()
     cond.wait()
 
-
-def send(cmd):
-    if ser.is_open:
-        ser.write(cmd.encode())
-        sleep(.2)
-
-
 def initRYWB():
+    print("init RYWB")
     global cond, threadExit
-
+    
     send("\x1c")
     send("\x55")
     send("\x31")
@@ -39,6 +128,7 @@ def initRYWB():
 
     for cmd in cmdlist:
         print(f'> {cmd}')
+        callUI("log", (">"+cmd))
         send(cmd)
 
     idx = len(cmdlist)
@@ -93,17 +183,15 @@ def initRYWB():
 
     for cmd in cmdlist[idx:]:
         print(f'> {cmd}')
+        callUI("log", (">"+cmd))
         send(cmd)
 
-    with open(FileName, 'w') as f:
-        for cmd in cmdlist:
-            f.write("%s\n" % cmd)
-
-    # print("end of initRYB")
-
+    # with open(FileName, 'w') as f:
+    #     for cmd in cmdlist:
+    #         f.write("%s\n" % cmd)
 
 def check(data):
-    print('<', data)
+    callUI("log", ("< "+data))
     global didConnect, didSubscribed, cond, MAC_ADDR
     if re.match("^(Loading Done)", data) is not None:
         cond.acquire()
@@ -136,32 +224,6 @@ def check(data):
         didSubscribed = data.split(',')[-2] == '1'
         print(f"handler {data.split(',')[-4]} is {'Subscribed' if didSubscribed else 'Unsubscribed'}")
 
-
-def taskSerial():
-    print("#### Listening to Serial...")
-    while not threadExit:
-        while ser.in_waiting:
-            data = ser.readline().decode()
-            check(data)
-    print('\nEnd task serial')
-
-def main():
-    try:
-        h_serial = threading.Thread(target=taskSerial)
-        h_initRYB = threading.Thread(target=initRYWB)
-
-        h_serial.start()
-        h_initRYB.start()
-        print("Threads start")
-        ser.close()
-    except (KeyboardInterrupt, SystemExit):
-        global threadExit
-        threadExit = True
-        h_serial.join()
-        ser.close()
-        print('\nBye bye!')
-
-
 if __name__ == '__main__':
     cmdlist = []
     threadExit = False
@@ -172,8 +234,7 @@ if __name__ == '__main__':
     ptr = None
     MAC_ADDR = ""
 
-    try:
-        ser = serial.Serial(PORT, BAUD)
-        main()
-    except SerialException:
-        print('serial not connected!')
+    app = wx.App()
+    frm = MyFrame()
+    frm.Show()
+    app.MainLoop()
