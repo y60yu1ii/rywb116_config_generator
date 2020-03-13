@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/python
 import serial
 from serial import SerialException
 from time import sleep
@@ -43,6 +43,7 @@ class MyFrame(wx.Frame):
         print("choice is port as", _PORT)
 
     def OnClick(self,event):
+        print("onclick, port is  ", _PORT)
         if _PORT == "port" :
             return
         else:
@@ -66,6 +67,9 @@ class MyFrame(wx.Frame):
         elif tag == 'port':
             self.pChoice.Clear()
             self.pChoice.AppendItems(PORT_LIST)
+            self.pChoice.SetSelection(0)
+            global _PORT
+            _PORT = PORT_LIST[0] 
         elif tag == 'go':
             print("go with port ", PORT)
             self.button.Disable()
@@ -77,7 +81,7 @@ class MyFrame(wx.Frame):
 
 def findPort():
     global PORT_LIST
-    PORT_LIST = serial_ports()
+    PORT_LIST = ports()
     callUI("port", "0")
 
 def taskSerial():

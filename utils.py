@@ -1,11 +1,21 @@
 import sys
 import glob
 import serial
+import serial.tools.list_ports
+
+def ports():
+    ports = serial.tools.list_ports.comports()
+    result = []
+    for port, desc, hwid in sorted(ports):
+#        print("{}: {} [{}]".format(port, desc, hwid))
+        print("{}".format(port))
+        result.append(port)
+    return result
 
 def serial_ports():
     if sys.platform.startswith('win'):
         ports = ['COM%s' % (i + 1) for i in range(256)]
-    elif sys.platform.startswith('linux') or sys.platform.startswith('cygwin'):
+    elif sys.platform.startswith('linux'):
         # this excludes your current terminal "/dev/tty"
         ports = glob.glob('/dev/tty[A-Za-z]*')
     elif sys.platform.startswith('darwin'):
