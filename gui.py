@@ -26,8 +26,7 @@ class MyFrame(wx.Frame):
         self.Bind(wx.EVT_BUTTON,self.OnClick,self.button)
         self.button.SetDefault()
 
-        self.textpanel = wx.TextCtrl(panel,-1,"## LOG ##", size=(dw - 20,400), pos=(10, 40), style=wx.TE_MULTILINE|wx.TE_READONLY)
-
+        self.textpanel = wx.TextCtrl(panel,-1,"## LOG ##", size=(dw - 20,400), pos=(10, 40), style=wx.TE_MULTILINE)
 
         pub.subscribe(self.recive, 'object.added')
         pub.subscribe(self.reciveThread, 'thread.input')
@@ -49,14 +48,16 @@ class MyFrame(wx.Frame):
         else:
             callUI("go", "0")
 
-
     def recive(self,data, extra1, extra2=None):
         print(data)
         print(extra1)
         if extra2:
             print(extra2)
-        # self.inputText.Value += str(data)
         self.textpanel.Value += str(data)
+        self.textpanel.SetInsertionPoint(-1)
+        self.textpanel.ShowPosition(self.textpanel.GetLastPosition())
+        self.textpanel.Refresh()
+        self.textpanel.Update()
 
     def reciveThread(self, tag, data):
         wx.CallAfter(self.updateUI, tag, data)

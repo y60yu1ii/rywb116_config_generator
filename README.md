@@ -3,8 +3,10 @@
 - Generate customizable RYWB116 config commands
 
 ## Permission issue of /dev/tty
-### Manjaro Not solved by below
+### Manjaro
 ~~~
 sudo groupadd dialout
 sudo usermod -aG dialout $(whoami)
+sudo reboot
 ~~~
+> try uucp, tty
