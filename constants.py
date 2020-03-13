@@ -1,7 +1,7 @@
 PORT = '/dev/cu.SLAB_USBtoUART'
 BAUD = 115200
 
-deviceName = "Device_Name"
+deviceName = "devname"
 ServiceUUID = '6E400001-B5A3-F393-E0A9-E50E24DCCA9E'
 rxUUID = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'
 txUUID = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'
@@ -11,7 +11,20 @@ txOTA = '6E400005-B5A3-F393-E0A9-E50E24DCCA9E'
 FileName = "scripts.txt"
 BUFF_SIZE = 128
 
-REG_MAC_ADDR = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})"
+REGX_MAC = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})"
+REGX_CONN =r"^(AT\+RSIBT_LE_DEVICE_CONNECTED=[0-2],([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}),[0-2])"
+REGX_DISCONN =r"^(AT\+RSIBT_LE_DISCONNECTED ([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}),[A-Za-z0-9]{4})"
+REGX_SUBSCR =r"^(AT\+RSIBT_WRITE,([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2}),[A-Za-z0-9]{1,2},2,[0-1],0)"
+
+AT_ADD_ATTR = "at+rsibt_addattribute"
+AT_ADD_SERVICE="at+rsibt_addservice"
+AT_OPMODE ="at+rsi_opermode"
+AT_LOCALNAME="at+rsibt_setlocalname"
+AT_SET_ADV="at+rsibt_setadvertisedata"
+AT_ADV="at+rsibt_advertise"
+
+ATT_DECL_CHARACTERISTIC ="2803"
+UUIDCCCD ="2902"
 
 # WIFI OPMODE VALUES
 WIFI_CLI = 0
