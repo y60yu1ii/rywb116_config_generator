@@ -11,6 +11,7 @@ from pubsub import pub
 
 TITLE = "RYWB116 Setting"
 PORT_LIST = ["port"]
+PORT_DESC = ["n/a"]
 _PORT = "port"
 dh = 500
 dw = 500
@@ -19,6 +20,8 @@ dw = 500
 class MyFrame(wx.Frame):
     def __init__(self, parent=None):
         super(MyFrame, self).__init__(parent, -1, TITLE, size=(dw, dh))
+        self.Bind(wx.EVT_CLOSE, self.OnCloseWindow)
+
         panel = wx.Panel(self, -1)
         self.pChoice = wx.Choice(panel,
                                  -1,
@@ -46,10 +49,32 @@ class MyFrame(wx.Frame):
         f.start()
         print("Find port...")
 
+    def OnCloseWindow(self, e):
+
+        dial = wx.MessageDialog(None, 'Are you sure to quit?', 'Question',
+                                wx.YES_NO | wx.NO_DEFAULT | wx.ICON_QUESTION)
+
+        ret = dial.ShowModal()
+
+        if ret == wx.ID_YES:
+            global threadExit, cond
+            threadExit = True
+            ser = serial.Serial(_PORT, BAUD)
+            ser.close()
+            self.Destroy()
+            cond.acquire()
+            cond.notify()
+            cond.release()
+            print('\nBye bye!')
+        else:
+            e.Veto()
+
     def onChoice(self, evt):
         global _PORT
-        _PORT = evt.GetString()
-        print("choice is port as", _PORT)
+        opt = evt.GetSelection()
+        _PORT = PORT_LIST[opt]
+        print("choice port", _PORT)
+        callUI("log", "Select " + PORT_DESC[opt])
 
     def OnClick(self, event):
         print("onclick, port is  ", _PORT)
@@ -92,15 +117,24 @@ class MyFrame(wx.Frame):
 
 
 def findPort():
-    global PORT_LIST
-    PORT_LIST = ports()
+    global PORT_LIST, PORT_DESC
+    ports = serial.tools.list_ports.comports()
+    if ports is not None:
+        PORT_LIST = []
+        PORT_DESC = []
+    for port, desc, hwid in sorted(ports):
+        print("{}: {}".format(port, desc))
+        PORT_LIST.append(port)
+        PORT_DESC.append(desc)
     callUI("port", "0")
 
 
 def taskSerial():
     try:
         ser = serial.Serial(_PORT, BAUD)
-        callUI("log", "Serial Ready!!" + str(ser.is_open))
+        if not ser.is_open:
+            ser.open()
+        callUI("log", "Serial Ready!! Serial open" + str(ser.is_open))
     except SerialException:
         callUI("log", "Serial is not connect!!")
 
@@ -205,6 +239,10 @@ def initRYWB():
         print(f'> {cmd}')
         callUI("log", (">" + cmd))
         send(cmd)
+
+    waitNext(cond)
+    if threadExit:
+        return
 
 
 def check(data):
